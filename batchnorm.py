@@ -24,10 +24,15 @@ def quantize_tensor(tensor, num_bits, mode='signed'):
     return tensor_q, scale
 
 def to_binary(x, bits):
-        if x < 0:
-            # Compute two's complement for negative numbers
-            x = (1 << (bits)) + x
-        return format(x, f'0{bits}b')
+    if x == -2**(bits-1):
+        x = x + 1
+    if x < 0:
+        # Compute two's complement for negative numbers
+        x = (1 << (bits)) + x
+    elif x >= (1 << bits):
+        # Handle overflow for unsigned values
+        x = x % (1 << bits)
+    return format(x, f'0{bits}b')
 
 def binary_to_bits(arr, axis=1):
     if arr.ndim == 1:
@@ -68,7 +73,8 @@ vectorized_to_binary = np.vectorize(to_binary)
 inp_tensor = torch.load('conv1_input.pth')
 weight_tensor = torch.load('conv1_weights.pth')
 
-bias=None, stride=2, padding=3
+stride = 2
+padding = 3
 
 N, C, H, W = inp_tensor.shape
 F, _, filter_h, filter_w = weight_tensor.shape
@@ -79,7 +85,7 @@ out_w = (W + 2 * padding - filter_w) // stride + 1
 print("Max value of input tensor:",inp_tensor.max().item()) # To find out if 1 can be incorporated to perform Batch Norm
 
 x_bits = 6
-w_bits = 8
+w_bits = 9
 
 Rc = torch.load('Rc_resnet50_cifar10.pth')
 Tc = torch.load('Tc_resnet50_cifar10.pth')
@@ -182,7 +188,7 @@ def conv2d_batchnorm(input, filters, bias=None, stride=1, padding=0):
     filters_col = filters.reshape(F, -1).T
 
     col_bin_mod = add_1d_to_2d(col, ones_col_array_binstr, axis=1)
-    filters_bin_mod = add_1d_to_2d(filters, Rc_2s_comp_binstr, axis=0)
+    filters_bin_mod = add_1d_to_2d(filters_col, Rc_2s_comp_binstr, axis=0)
 
     col_bin = binary_to_bits(col_bin_mod, axis=0)
     filters_bin = binary_to_bits(filters_bin_mod, axis=1)
@@ -242,3 +248,5 @@ print("Final batchnorm output shape:",bn_out_np.shape)
 
 bn_out_tensor = (torch.from_numpy(bn_out_np))*(Tc[None, :, None, None].cpu().detach())
 print(bn_out_tensor[0][0][3])
+
+print(scale_w_Rc)
